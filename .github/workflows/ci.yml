@@ -1,0 +1,35 @@
+name: CI
+on:
+  pull_request:
+    branches: [develop, master, main]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  linux:
+    # Libraries, unit tests (incl. the AzerothCore mmtile reader) and mmtile_loadcheck; no SDL needed.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DRECASTNAVIGATION_DEMO=OFF
+      - name: Build
+        run: cmake --build build --parallel --target Tests mmtile_loadcheck
+      - name: Test
+        working-directory: build/Tests
+        run: ./Tests
+  windows:
+    # RecastDemo itself (the "Load mmtile" loaders) needs SDL2 + OpenGL; the build script fetches SDL2.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build RecastDemo, mmtile_loadcheck and Tests
+        shell: pwsh
+        run: ./scripts/build-windows.ps1
+      - name: Test
+        shell: pwsh
+        working-directory: build/cmake/Tests/Release
+        run: ./Tests.exe
