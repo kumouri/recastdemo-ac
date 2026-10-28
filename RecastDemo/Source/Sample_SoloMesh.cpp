@@ -24,6 +24,7 @@
 #include "SDL_opengl.h"
 #include "imgui.h"
 #include "InputGeom.h"
+#include "MmapTile.h"
 #include "Sample.h"
 #include "Sample_SoloMesh.h"
 #include "Recast.h"
@@ -761,108 +762,35 @@ bool Sample_SoloMesh::handleBuild()
 
 bool Sample_SoloMesh::handleLoad()
 {
-    if (!m_geom || !m_geom->getMesh())
-    {
-        m_ctx->log(RC_LOG_ERROR, "buildNavigation: Input mesh is not specified.");
-        return false;
-    }
+	if (!m_geom || !m_geom->getMesh())
+	{
+		m_ctx->log(RC_LOG_ERROR, "Load mmtile: Input mesh is not specified.");
+		return false;
+	}
 
-    cleanup();
+	mmap::DebugMeshName name;
+	if (!mmap::parseDebugMeshName(m_geom->getMesh()->getFileName(), name))
+	{
+		m_ctx->log(RC_LOG_ERROR, "Load mmtile: the input mesh must be the generator's debug mesh, map<MMM><XX><YY>.obj.");
+		return false;
+	}
 
-    const std::string& meshFilePath = m_geom->getMesh()->getFileName();
-    int mapIdStart = strlen("Meshes/map");
-    int mapIdEnd = meshFilePath.length() - 3 /*extension*/ - 1 /*dot*/ - 4 /*XXYY coords*/;
-    int mapIdLength = mapIdEnd - mapIdStart;
-    char charBuff[5];
-    memset(charBuff, 0, sizeof(charBuff));
-    std::copy(&meshFilePath[mapIdStart], &meshFilePath[mapIdEnd], &charBuff[0]);
-    int mapId = atoi(charBuff);
-    // load and init dtNavMesh - read parameters from file
-    int pathLen = strlen("Meshes/.mmap") + 1 + mapIdLength;
-    char *fileName = new char[pathLen];
-    snprintf(fileName, pathLen, "Meshes/%0*i.mmap", mapIdLength, mapId);
-    FILE* file = fopen(fileName, "rb");
-    if (!file)
-    {
-        delete[] fileName;
-        return false;
-    }
-    dtNavMeshParams params;
-    int count = fread(&params, sizeof(dtNavMeshParams), 1, file);
-    fclose(file);
-    if (count != 1)
-    {
-        delete[] fileName;
-        return false;
-    }
-    dtNavMesh* mesh = dtAllocNavMesh();
-    if (dtStatusFailed(mesh->init(&params)))
-    {
-        dtFreeNavMesh(mesh);
-        delete[] fileName;
-        return false;
-    }
-    delete[] fileName;
+	cleanup();
+	dtFreeNavMesh(m_navMesh);
+	m_navMesh = mmap::loadTileNeighbourhood(m_ctx, name, 0, 0);
+	if (!m_navMesh)
+		return false;
 
-    memset(charBuff, 0, sizeof(charBuff));
-    std::copy_n(&meshFilePath[mapIdEnd], sizeof(char) * 2, &charBuff[0]);
-    int x = atoi(charBuff);
-    memset(charBuff, 0, sizeof(charBuff));
-    std::copy_n(&meshFilePath[mapIdEnd + 2], sizeof(char) * 2, &charBuff[0]);
-    int y = atoi(charBuff);
+	dtStatus status = m_navQuery->init(m_navMesh, 2048);
+	if (dtStatusFailed(status))
+	{
+		m_ctx->log(RC_LOG_ERROR, "Could not init Detour navmesh query");
+		return false;
+	}
 
-    // load this tile :: Meshes/MMMXXYY.mmtile
-    pathLen = strlen("Meshes/XXYY.mmtile") + 1 + mapIdLength;
-    fileName = new char[pathLen];
-    snprintf(fileName, pathLen, "Meshes/%0*i%02i%02i.mmtile", mapIdLength, mapId, x, y);
+	if (m_tool)
+		m_tool->init(this);
+	initToolStates(this);
 
-    file = fopen(fileName, "rb");
-    if (!file)
-    {
-        delete[] fileName;
-        return false;
-    }
-    delete[] fileName;
-
-    // read header
-    MmapTileHeader fileHeader;
-    if (fread(&fileHeader, sizeof(MmapTileHeader), 1, file) != 1 || fileHeader.mmapMagic != MMAP_MAGIC)
-    {
-        fclose(file);
-        return false;
-    }
-
-    unsigned char* data = (unsigned char*)dtAlloc(fileHeader.size, DT_ALLOC_PERM);
-
-    size_t result = fread(data, fileHeader.size, 1, file);
-    if (!result)
-    {
-        fclose(file);
-        return false;
-    }
-
-    fclose(file);
-
-    dtTileRef tileRef = 0;
-
-    // memory allocated for data is now managed by detour, and will be deallocated when the tile is removed
-    if (!dtStatusSucceed(mesh->addTile(data, fileHeader.size, DT_TILE_FREE_DATA, 0, &tileRef)))
-    {
-        dtFree(data);
-        return false;
-    }
-
-    m_navMesh = mesh;
-    dtStatus status = m_navQuery->init(m_navMesh, 2048);
-    if (dtStatusFailed(status))
-    {
-        m_ctx->log(RC_LOG_ERROR, "Could not init Detour navmesh query");
-        return false;
-    }
-
-    if (m_tool)
-        m_tool->init(this);
-    initToolStates(this);
-
-    return true;
+	return true;
 }

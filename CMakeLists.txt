@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.5...4.1)
 
 project(RecastNavigation)
 
@@ -10,6 +10,10 @@ option(RECASTNAVIGATION_DEMO "Build demo" ON)
 option(RECASTNAVIGATION_TESTS "Build tests" ON)
 option(RECASTNAVIGATION_EXAMPLES "Build examples" ON)
 option(RECASTNAVIGATION_STATIC "Build static libraries" ON)
+option(RECASTNAVIGATION_MMTILE_LOADCHECK "Build mmtile_loadcheck, the headless AzerothCore mmtile reader" ON)
+
+# DT_POLYREF64 is #defined in Detour/Include/DetourNavMesh.h (AzerothCore and TrinityCore tiles
+# need 64-bit polyrefs); RecastDemo/Include/MmapTile.h static_asserts it.
 
 add_subdirectory(DebugUtils)
 add_subdirectory(Detour)
@@ -19,6 +23,10 @@ add_subdirectory(Recast)
 
 if (RECASTNAVIGATION_DEMO)
     add_subdirectory(RecastDemo)
+endif ()
+
+if (RECASTNAVIGATION_MMTILE_LOADCHECK)
+    add_subdirectory(RecastDemo/LoadCheck)
 endif ()
 
 if (RECASTNAVIGATION_TESTS)

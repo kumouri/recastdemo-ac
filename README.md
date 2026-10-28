@@ -1,3 +1,55 @@
+recastdemo-ac: RecastDemo for AzerothCore mmaps
+===============================================
+
+This is a fork of [jackpoz/recastnavigation](https://github.com/jackpoz/recastnavigation) at
+`feature/tc-settings-enabled` (the RecastDemo that AzerothCore's `mmaps-config.yaml` recommends),
+with **"Load mmtile" fixed for AzerothCore's MMAP v20 tiles**. Integration is on `develop`
+(Git Flow).
+
+**What changed.** jackpoz's loader reads TrinityCore's 20-byte `MmapTileHeader`. AzerothCore v20
+writes 56 bytes: those 20, then a 36-byte `MmapTileRecastConfig`. So every tile was read 36 bytes
+early, `addTile` failed the `DNAV` check, and nothing loaded, with no error. All three loaders
+(Solo Mesh, Tile Mesh, Tile Mesh sub-tiles) now go through `RecastDemo/Source/MmapTile.cpp`,
+which:
+- reads the exact v20 header, with `static_assert`s on 56 and 36 bytes;
+- **refuses** any other MMAP version, Detour version, magic or file length with an error in
+  the log, and fails the whole load rather than skipping a tile;
+- checks each blob's size against `dtNavMesh::addTile`'s layout arithmetic, so a
+  `DT_POLYREF64` mismatch can't mis-slice a tile silently. 64-bit polyrefs are `#define`d in
+  `Detour/Include/DetourNavMesh.h` and `static_assert`ed;
+- reads `.mmap` as exactly one 28-byte `dtNavMeshParams`.
+
+**Build (Windows, VS 2022 x64):** `pwsh -NoProfile -File scripts/build-windows.ps1`. It fetches
+SDL2 2.32.10 (SHA-256 checked) into `RecastDemo/Contrib/SDL`, then builds `RecastDemo`,
+`mmtile_loadcheck` and `Tests` into `build/cmake/`. CMake ≥ 3.5 (4.x works).
+
+**Use.** Run the generator with `debugOutput: true` for one tile. Copy `meshes/mapMMMXXYY.obj`
+and the map's `MMM.mmap` and `MMMXXYY.mmtile` files into RecastDemo's `Meshes/`. Choose the OBJ
+as Input Mesh, then press **Load mmtile**. Tile Mesh loads the tile and its eight neighbours;
+Solo Mesh loads the one tile. The file name `map<MMM><XX><YY>.obj` picks the tiles. A refused
+tile opens the log with the reason.
+
+**Headless proof:** `mmtile_loadcheck <mmaps dir> <map> [--expect-tiles N] [--expect-polys N]
+[--expect-cross-links N] [--path wowX wowY wowZ wowX wowY wowZ]`. It uses the same reader and
+loads every tile of a map. On AzerothCore map 609 (`wowgaming/client-data` v20):
+
+```
+Detour: DT_NAVMESH_VERSION=7 sizeof(dtPolyRef)=8 sizeof(dtLink)=16 MmapTileHeader=56 bytes (MMAP v20)
+map 609: files=37 tiles=37 (maxTiles=42) polys=153493 verts=253742 links=354136 crossTileLinks=4338 offMeshCons=0
+path: 30 polys, 9 corners, 164.0 yards, reached=yes
+OK
+```
+
+A real tile with its version patched to 19, or cut down to TrinityCore's 20-byte header, gets
+`REFUSED: ... is MMAP version 19` (or 15) and exit 2. `Tests/RecastDemo/Tests_MmapTile.cpp`
+covers the same cases on a tile built by `dtCreateNavMeshData`.
+
+**Safety.** Point RecastDemo and `mmtile_loadcheck` at a copy of the data; both only read it.
+Putting edited tiles on a live server is a separate step. Navmesh editing (patch files applied at
+bake time) lives in the companion repo `wow-mmaps-viewer`.
+
+---
+
 
 Recast & Detour
 ===============
