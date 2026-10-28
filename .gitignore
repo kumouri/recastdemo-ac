@@ -47,3 +47,6 @@ Docs/html
 ## IDE files
 .idea/
 cmake-build-*/
+
+## Local builds (scripts/build-windows.ps1)
+/build/

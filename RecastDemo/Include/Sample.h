@@ -202,19 +202,6 @@ private:
 	Sample& operator=(const Sample&);
 };
 
-typedef unsigned int uint32;
-const uint32 MMAP_MAGIC = 0x4d4d4150; // 'MMAP'
-
-struct MmapTileHeader
-{
-    uint32 mmapMagic;
-    uint32 dtVersion;
-    uint32 mmapVersion;
-    uint32 size;
-    bool usesLiquids : 1;
-
-    MmapTileHeader() : mmapMagic(MMAP_MAGIC), dtVersion(DT_NAVMESH_VERSION),
-        mmapVersion(0), size(0), usesLiquids(true) { }
-};
+// The .mmap/.mmtile formats live in MmapTile.h.
 
 #endif // RECASTSAMPLE_H
